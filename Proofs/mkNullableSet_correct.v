@@ -1,5 +1,5 @@
 Require Import MSets.
-Require Import Wf_nat.
+Require Import Arith.Wf_nat.
 
 Require Import Generator.
 Require Import Grammar.

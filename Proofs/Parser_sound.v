@@ -1,5 +1,6 @@
 Require Import List.
 Require Import Lia.
+Require Import Arith.Wf_nat.
 Require Import String.
 Require Import Grammar.
 Require Import Lemmas.

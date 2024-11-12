@@ -1,7 +1,7 @@
 Require Import List.
 Require Import Lia.
 Require Import String.
-Require Import Wf_nat.
+Require Import Arith.Wf_nat.
 Require Import Grammar.
 Require Import Tactics.
 Require Import Lemmas.

@@ -1,5 +1,5 @@
 Require Import List.
-Require Import Wf_nat.
+Require Import Arith.Wf_nat.
 
 Require Import Grammar.
 Require Import Lemmas.
