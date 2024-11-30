@@ -1,3 +1,8 @@
+(* Adapted from Vermillion files:
+  - ./Example.v
+  - ./Evaluation/VermillionJsonParser.v
+ *)
+
 Require Import PeanoNat.
 Require Import String.
 (*Require Import ExtrOcamlBasic.*)
@@ -12,9 +17,9 @@ Open Scope string_scope.
 
 (* Abstract Syntax for Welkin *)
 Inductive ast :=
-  | Path : list string -> ast
-  | Link : ast * ast * ast -> ast
+  | Name : nat * list string -> ast
   | Graph : nat * list string * list ast -> ast
+  | Chain : list(ast * option(ast) * ast) -> ast
   | Term : list ast -> ast.
 
 (* First, we provide the types of grammar symbols 
@@ -35,15 +40,17 @@ Module Json_Types <: SYMBOL_TYPES.
   Definition terminal := terminal'.
   
   Inductive nonterminal' :=
-  | a
   | path 
   | dots
   | import
   | name
-  | link 
+  | contents
+  | link
+  | chain
   | graph
+  | graph_opt  
   | term
-  | terms.
+  | Start.
   
   Definition nonterminal := nonterminal'.
 
@@ -70,15 +77,17 @@ Module Json_Types <: SYMBOL_TYPES.
 
   Definition showNT (x : nonterminal) : string :=
     match x with
-    | a => "a"
-    | dots => "dots"
-    | path  => "path"
-    | import => "import"
-    | name => "name"
-    | link  => "link"
-    | graph => "graph"
-    | term  => "term"
-    | terms  => "terms"
+    | dots         => "dots"
+    | path         => "path"
+    | import       => "import"
+    | name         => "name"
+    | contents     => "contents"
+    | link         => "link"
+    | chain        => "chain"
+    | graph        => "graph"
+    | graph_opt    => "graph_opt"
+    | term         => "term"
+    | Start        => "start"
     end.
 
   Definition t_semty (a : terminal) : Type :=
@@ -91,15 +100,17 @@ Module Json_Types <: SYMBOL_TYPES.
 
   Definition nt_semty (x : nonterminal) : Type :=
     match x with
-    | a => string
-    | dots   => nat
-    | import => nat
-    | path   => list string
-    | name   => nat * list string 
-    | link   => ast * ast * ast
-    | graph  => list string * ast
-    | term   => list ast
-    | terms  => list ast
+    | dots          => nat
+    | import        => nat
+    | path          => list string
+    | name          => nat * list string 
+    | contents      => list ast
+    | link          => list (option(ast) * ast)
+    | chain         => list (ast * option(ast) * ast)
+    | graph         => nat * list string * list ast
+    | graph_opt     => option(nat * list string * list ast)
+    | term          => ast
+    | Start         => list ast
     end.
 
 End Json_Types.
@@ -115,6 +126,8 @@ End G.
 (* The parser generator itself. *)
 Module Export PG := Make G.
 
+Compute nt_semty Start.
+
 
 Definition prod (lhs : nonterminal) (rhs : list symbol) 
   (action : action_ty (lhs, rhs)) :=
@@ -123,22 +136,117 @@ Definition prod (lhs : nonterminal) (rhs : list symbol)
 (* Now we can define a grammar as a record 
    containing a start symbol and a list of productions. *)
 Definition welkin_grammar: grammar :=
-  {| start := name; 
+  {| start := Start; 
 
     prods := [
-  
-      (*prod link [ NT path; T Dash; T Unit; T RightArrow; T Unit]*)
+
+      (*start: term "," start end | empty*)
+      (*term: graph chain*)
+      (*chain: link chain | empty*)
+      (*link: "-" graph? "->" graph |
+              "<-" graph? "-" graph |
+              "-" graph? "-" graph
+      *)
+      (*graph?: graph | empty *)
+      (*graph: name contents | contents *)
+      (*name: import.unit.path*)
+      (*contents: "{" term "}" | emtpy *)
+      (*import: ".".dots | empty*)
+      (*dots: ".".dots | empty*)
+      (*path: ".".unit.path*)
+      (*unit: string | identifier*)
+      (*string: STRING*)
+      (*identifier: IDENTIFIER*)
+      (*end: "," | empty*)
+
+      prod Start [NT term ; T Comma ; NT Start ]
+      (fun tup =>
+      match tup with 
+      | (_term, (_, (_start, _))) => _term :: _start
+      end);
+
+      prod Start []
+      (fun _ => []);
+
+      prod term [ NT graph ]
+      (fun tup =>
+        match tup with
+        | (_graph, _) => Graph _graph
+        end
+      );
+
+      (*prod term [ NT graph ; NT chain]*)
+      (*(fun tup => *)
+      (*match tup with *)
+      (*| (_graph, (_chain, _)) => match _chain with*)
+      (*  | [] => Graph _graph*)
+      (*  | _link :: xs => Chain []*)
+      (*  end*)
+      (*end);*)
+
+      (*prod chain [ NT link ; NT chain]*)
+      (*(fun tup =>*)
+      (*  match tup with*)
+      (*  | (_link, (_chain, _)) => _link ++ _chain*)
+      (*  end*)
+      (*);*)
+      (**)
+      (*prod chain []*)
+      (*(fun _ => []);*)
+      (**)
+      (*prod link [ T Dash; NT graph_opt; T RightArrow; NT graph]*)
+      (*(fun tup => tup*)
+      (*);*)
+      (**)
+      (*prod link [ NT graph; T LeftArrow ; NT graph_opt; T Dash; NT graph]*)
+      (*(fun tup => *)
+      (*  match tup with*)
+      (*  | (target, (_, (connector, (_, (source, _))))) =>*)
+      (*      let _connector := option_map Graph connector*)
+      (*      in *)
+      (*      [(Graph source, _connector, Graph target)]*)
+      (*  end*)
+      (*);*)
+      (**)
+      (**)
+      (*prod link [ NT graph; T Dash ; NT graph_opt; T Dash; NT graph]*)
       (*(fun tup => *)
       (*  match tup with*)
       (*  | (source, (_, (connector, (_, (target, _))))) =>*)
-      (*      (Path source, Path [connector], Path [target])*)
+      (*      let _connector := option_map Graph connector*)
+      (*      in *)
+      (*      [(Graph source, _connector, Graph target);*)
+      (*       (Graph target, _connector, Graph source)*)
+      (*      ]*)
       (*  end*)
       (*);*)
 
-      (*name: import.unit.path*)
-      (*import: ".".dots | empty*)
-      (*dots: ".".dots | empty*)
-      (*path: ".".unit.path | empty *)
+      prod graph_opt [ NT graph ]
+      (fun tup => 
+      match tup with 
+      | (_graph, _) => Some _graph 
+      end);
+
+      prod graph_opt []
+      (fun _ => None);
+
+      prod graph [ NT name ; NT contents]
+      (fun tup =>
+        match tup with
+        | (_name, (_contents, _)) => (_name, _contents)
+        end
+      );
+
+
+      prod contents [ T LeftBrace ; NT Start ; T RightBrace ]
+      (fun tup =>
+        match tup with
+        | (_, (_start, _)) => _start
+        end
+      );
+      
+      prod contents []
+      (fun _ => []);
 
       prod name [ NT import ; T Unit ; NT path]
       (fun tup =>
@@ -177,36 +285,32 @@ Definition welkin_grammar: grammar :=
 
       prod path [ ]
       (fun _ => [])
-
   ]
   |}.
 
 Definition tok (a : terminal) (v : t_semty a) : token :=
   existT _ a v.
 
+Definition parse_welkin (input : list token):=
+  match parseTableOf welkin_grammar with
+   | inl msg => inl msg
+   | inr tbl => inr (parse tbl (NT Start) input)
+   end.
+
 (* ..a.b.c *)
-Definition simple_name : list token :=
-  [tok Dot tt ; tok Dot tt ; tok Unit "a" ; tok Dot tt ; tok Unit "b" ; tok Dot tt ; tok Unit "c"].
+Definition simple_name :=
+  [tok Dot tt ; tok Dot tt ; tok Unit "a" ; tok Dot tt ; tok Unit "b" ; tok Dot tt ; tok Unit "c" ; tok Comma tt ].
 
-Compute (match parseTableOf welkin_grammar with
-         | inl msg => inl msg
-         | inr tbl => inr (parse tbl (NT name) simple_name)
-         end).
+Compute parse_welkin simple_name.
 
-Definition simple_path : list token :=
-  [tok Unit "a" ; tok Dot tt ; tok Unit "b" ; tok Dot tt].
+(* ..a.b.c, .d.ee.f, ...g.h.i.j *)
+Definition simple_list :=
+  [tok Dot tt ; tok Dot tt ; tok Unit "a" ; tok Dot tt ; tok Unit "b" ; tok Dot tt ; tok Unit "c" ; tok Comma tt ;
+  tok Dot tt ; tok Unit "d" ; tok Dot tt ; tok Unit "ee" ; tok Dot tt ; tok Unit "f" ; tok Comma tt ;
+  tok Dot tt ; tok Dot tt ; tok Dot tt ; tok Unit "g" ; tok Dot tt ; tok Unit "h" ; tok Dot tt ; tok Unit "i" ; tok Dot tt ; tok Unit "j" ; tok Comma tt 
+  ].
 
-Compute (match parseTableOf welkin_grammar with
-         | inl msg => inl msg
-         | inr tbl => inr (parse tbl (NT terms) simple_path)
-         end).
-
+Compute parse_welkin simple_list.
 
 Definition simple_link : list token :=
   [tok Unit "a" ; tok Dot tt ; tok Unit "b" ; tok Dot tt; tok Dash tt ; tok Unit "b" ; tok Dot tt ; tok Unit "c" ; tok Dot tt ; tok Unit "c" ; tok RightArrow tt ; tok Unit "c"].
-
-
-Compute (match parseTableOf welkin_grammar with
-         | inl msg => inl msg
-         | inr tbl => inr (parse tbl (NT name) simple_link )
-         end).
