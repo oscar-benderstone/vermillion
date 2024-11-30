@@ -13,8 +13,8 @@ Open Scope string_scope.
 (* Abstract Syntax for Welkin *)
 Inductive ast :=
   | Path : list string -> ast
-  | Connection : ast * ast * ast -> ast
-  | Graph : list string * list ast -> ast
+  | Link : ast * ast * ast -> ast
+  | Graph : nat * list string * list ast -> ast
   | Term : list ast -> ast.
 
 (* First, we provide the types of grammar symbols 
@@ -35,8 +35,11 @@ Module Json_Types <: SYMBOL_TYPES.
   Definition terminal := terminal'.
   
   Inductive nonterminal' :=
+  | a
   | path 
-  (*| name*)
+  | dots
+  | import
+  | name
   | link 
   | graph
   | term
@@ -67,7 +70,11 @@ Module Json_Types <: SYMBOL_TYPES.
 
   Definition showNT (x : nonterminal) : string :=
     match x with
+    | a => "a"
+    | dots => "dots"
     | path  => "path"
+    | import => "import"
+    | name => "name"
     | link  => "link"
     | graph => "graph"
     | term  => "term"
@@ -84,11 +91,15 @@ Module Json_Types <: SYMBOL_TYPES.
 
   Definition nt_semty (x : nonterminal) : Type :=
     match x with
-    | path    => list string
-    | link    => ast * ast * ast
-    | graph   => list string * ast
-    | term    => list ast
-    | terms    => list ast
+    | a => string
+    | dots   => nat
+    | import => nat
+    | path   => list string
+    | name   => nat * list string 
+    | link   => ast * ast * ast
+    | graph  => list string * ast
+    | term   => list ast
+    | terms  => list ast
     end.
 
 End Json_Types.
@@ -112,13 +123,60 @@ Definition prod (lhs : nonterminal) (rhs : list symbol)
 (* Now we can define a grammar as a record 
    containing a start symbol and a list of productions. *)
 Definition welkin_grammar: grammar :=
-  {| start := link ; 
+  {| start := name; 
 
     prods := [
   
-      prod link [ NT path; T Dash; NT path; T RightArrow; NT path]
-     
+      (*prod link [ NT path; T Dash; T Unit; T RightArrow; T Unit]*)
+      (*(fun tup => *)
+      (*  match tup with*)
+      (*  | (source, (_, (connector, (_, (target, _))))) =>*)
+      (*      (Path source, Path [connector], Path [target])*)
+      (*  end*)
+      (*);*)
 
+      (*name: import.unit.path*)
+      (*import: ".".dots | empty*)
+      (*dots: ".".dots | empty*)
+      (*path: ".".unit.path | empty *)
+
+      prod name [ NT import ; T Unit ; NT path]
+      (fun tup =>
+        match tup with
+        | (_dots, (_unit, (_path, _))) => (_dots, _unit :: _path)
+        end
+      );
+
+      prod import [ T Dot ; NT dots ]
+      (fun tup =>
+        match tup with
+        | (dot, (_dots, _)) => 1 + _dots 
+        end
+      );
+
+      prod import [ ]
+      (fun _ => 0);
+
+      prod dots [ T Dot ; NT dots ]
+      (fun tup =>
+        match tup with 
+        | (dot, (_dots, _)) => 1 + _dots 
+          end
+      );
+
+      prod dots [ ]
+      (fun _ => 0);
+
+      prod path [ T Dot; T Unit ; NT path ]
+      (fun tup =>
+        match tup with
+        | (base, (_unit, (_path, _))) =>
+            _unit :: _path
+        end
+      );
+
+      prod path [ ]
+      (fun _ => [])
 
   ]
   |}.
@@ -126,10 +184,29 @@ Definition welkin_grammar: grammar :=
 Definition tok (a : terminal) (v : t_semty a) : token :=
   existT _ a v.
 
-(* Example input to the parser:
-  
-   a - b -> c
+(* ..a.b.c *)
+Definition simple_name : list token :=
+  [tok Dot tt ; tok Dot tt ; tok Unit "a" ; tok Dot tt ; tok Unit "b" ; tok Dot tt ; tok Unit "c"].
 
-*)
-Definition example_prog : list token :=
-  [tok Unit "a" ; tok Dash tt ; tok Unit "b" ; tok Unit "c"].
+Compute (match parseTableOf welkin_grammar with
+         | inl msg => inl msg
+         | inr tbl => inr (parse tbl (NT name) simple_name)
+         end).
+
+Definition simple_path : list token :=
+  [tok Unit "a" ; tok Dot tt ; tok Unit "b" ; tok Dot tt].
+
+Compute (match parseTableOf welkin_grammar with
+         | inl msg => inl msg
+         | inr tbl => inr (parse tbl (NT terms) simple_path)
+         end).
+
+
+Definition simple_link : list token :=
+  [tok Unit "a" ; tok Dot tt ; tok Unit "b" ; tok Dot tt; tok Dash tt ; tok Unit "b" ; tok Dot tt ; tok Unit "c" ; tok Dot tt ; tok Unit "c" ; tok RightArrow tt ; tok Unit "c"].
+
+
+Compute (match parseTableOf welkin_grammar with
+         | inl msg => inl msg
+         | inr tbl => inr (parse tbl (NT name) simple_link )
+         end).
