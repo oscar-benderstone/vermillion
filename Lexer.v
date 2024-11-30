@@ -3,6 +3,9 @@ From Coq Require Import Strings.String.
 From Coq Require Import Strings.Ascii.
 From Coq Require Import Lists.List. Import ListNotations.
 
+Require Import Grammar.
+Close Scope string_scope.
+
 (* Adpated from Software Foundations, Volume 1: 
   https://softwarefoundations.cis.upenn.edu/lf-current/Preface.html
 *)
@@ -65,6 +68,10 @@ Fixpoint tokenize_helper (cls : character_group) (acc xs : list ascii)
       tk ++ ["("]::(tokenize_helper other [] xs')
     | _, _, ")"      =>
       tk ++ [")"]::(tokenize_helper other [] xs')
+    | _, _, "{"      =>
+      tk ++ ["{"]::(tokenize_helper other [] xs')
+    | _, _, "}"      =>
+      tk ++ ["}"]::(tokenize_helper other [] xs')
     | _, layout, _    =>
       tk ++ (tokenize_helper layout [] xs')
     | alpha,alpha,x  =>
@@ -80,3 +87,5 @@ Fixpoint tokenize_helper (cls : character_group) (acc xs : list ascii)
 
 Definition tokenize (s : string) : list string :=
   map string_of_list (tokenize_helper layout [] (list_of_string s)).
+
+Open Scope string_scope.
